@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Texture</title>
+    <script src="../assets/js/glmatrix-0.9.6.min.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/webgl-utils.js"></script>
+
+    <script>
+        /** @type { WebGLRenderingContext } */
+        let gl
+        const projMat4 = mat4.create() // 创建一个初始化的矩阵
+        const POINTS = []
+        const INDEXS = []
+        const vertexString = `
+            attribute vec4 a_position;
+            uniform mat4 proj;
+            varying vec4 v_color;
+            void main() {
+                gl_Position = proj * a_position;
+                gl_PointSize = 10.0;
+                v_color = gl_Position * 0.8 + 0.2;
+            }
+        `
+
+        const fragmentString = `
+            precision mediump float;
+            varying vec4 v_color;
+            void main() {
+                gl_FragColor = v_color;
+            }
+        `
+
+        function init() {
+            initWebgl()
+            const programInfo = initProgram(vertexString, fragmentString)
+            initBuffer()
+            initTexture()
+            render(programInfo)
+        }
+
+        function initWebgl() {
+            /** @type {HTMLCanvasElement} */
+            const canvas = document.querySelector('#webglCanvas')
+            gl = canvas.getContext('webgl')
+            mockData()
+            function mockData() {
+                POINTS.push(100, 200, 0, 1)
+                POINTS.push(200, 200, 0, 1)
+                POINTS.push(100, 400, 0, 1)
+                POINTS.push(500, 250, 0, 1)
+                INDEXS.push(0, 1, 2, 0, 2, 3)
+            }
+        }
+
+        function initProgram(vertexString, fragmentString) {
+            const vsShader = createShader(gl.VERTEX_SHADER, vertexString)
+            const fsShader = createShader(gl.FRAGMENT_SHADER, fragmentString)
+            const program = createProgram(vsShader, fsShader)
+
+            const position = gl.getAttribLocation(program, 'a_position')
+            const projection = gl.getUniformLocation(program, 'proj')
+            return {
+                program,
+                vertexParam: {
+                    position,
+                    projection
+                },
+                fragmentParam: {}
+            }
+
+            function createShader(type, text) {
+                const shader = gl.createShader(type)
+                gl.shaderSource(shader, text)
+                gl.compileShader(shader)
+                const success = gl.getShaderParameter(shader, gl.COMPILE_STATUS)
+                if (success) return shader
+                alert(gl.getShaderInfoLog(shader))
+                gl.deleteShader(shader)
+            }
+
+            function createProgram(vsShader, fsShader) {
+                const program = gl.createProgram()
+                gl.attachShader(program, vsShader)
+                gl.attachShader(program, fsShader)
+                gl.linkProgram(program)
+                const success = gl.getProgramParameter(program, gl.LINK_STATUS)
+                if (success) return program
+                alert(gl.getProgramInfoLog(program))
+                gl.deleteProgram(program)
+            }
+        }
+
+        function initBuffer() {
+            const dataBuffer = gl.createBuffer()
+            gl.bindBuffer(gl.ARRAY_BUFFER, dataBuffer)
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(POINTS), gl.STATIC_DRAW)
+
+            const indexBuffer = gl.createBuffer()
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(INDEXS), gl.STATIC_DRAW)
+
+            return {
+                dataBuffer,
+                indexBuffer
+            }
+        }
+
+        function initTexture() {
+
+        }
+
+        function render(programInfo) {
+            webglUtils.resizeCanvasToDisplaySize(gl.canvas)
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
+            // 对 projMat4 赋值为当前 canvas 的投影坐标系
+            mat4.ortho(0, gl.canvas.width, gl.canvas.height, 0, -1.0, 1.0, projMat4)
+
+            gl.clearColor(0, 0, 0, 1)
+            gl.clear(gl.COLOR_BUFFER_BIT)
+
+            gl.useProgram(programInfo.program)
+
+            const { position } = programInfo.vertexParam
+            gl.enableVertexAttribArray(position)
+            gl.vertexAttribPointer(position, 4, gl.FLOAT, false, 0, 0)
+
+            gl.uniformMatrix4fv(programInfo.vertexParam.projection, false, projMat4)
+
+            // gl.drawArrays(gl.LINE_LOOP, 0, POINTS.length / 4)
+            gl.drawElements(gl.TRIANGLES, INDEXS.length, gl.UNSIGNED_SHORT, 0)
+        }
+    </script>
+</head>
+
+<body onload="init()">
+    <canvas id="webglCanvas" width="1024" height="700"></canvas>
+</body>
+
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Point</title>
+    <script src="../assets/js/glmatrix-0.9.6.min.js"></script>
+    <script>
+        /** 顶点着色器
+         * a_position 承接坐标点
+         * proj 承接投影坐标系
+         * gl_position 最终绘制点点坐标
+         * proj * a_position 表示为将正交坐标系转化回canvas坐标系以便后续计算
+        */
+        const vertexString = `
+            attribute vec4 a_position;
+            uniform mat4 proj;
+            void main() {
+                gl_Position = proj * a_position;
+                gl_PointSize = 10.0;
+            }
+        `
+        const fragmentString = `
+            precision mediump float;
+            void main() {
+                gl_FragColor = vec4(0, 0, 1.0, 1.0);
+            }
+        `
+
+        /** @type {WebGLRenderingContext} */
+        let webgl
+        /** @type {HTMLCanvasElement} */
+        let canvas
+        const POINTS = []
+        const INDEXS = []
+        const projMat4 = mat4.create() // 创建一个初始化的矩阵
+
+        function init() {
+            initWebgl()
+            const programInfo = initProgram()
+            initBuffer()
+            render(programInfo)
+        }
+
+        function initWebgl() {
+            canvas = document.querySelector('#webglCanvas')
+            // 获取上下文
+            webgl = canvas.getContext('webgl')
+            mockData()
+
+            // 模拟数据
+            function mockData() {
+                POINTS.push(100.0, 100.0, 0, 1.0)
+                POINTS.push(200.0, 200.0, 0, 1.0)
+                POINTS.push(100.0, 400.0, 0, 1.0)
+                POINTS.push(400.0, 600.0, 0, 1.0)
+                POINTS.push(500.0, 450.0, 0, 1.0)
+                POINTS.push(600.0, 500.0, 0, 1.0)
+
+                INDEXS.push(0, 1, 2, 0, 3, 4, 0, 2, 4)
+                // // 添加单个点
+                // function addPoint(position) {
+                //     // 定义一个点
+                //     POINTS.push(100.0, 100.0, 0.0, 1.0)
+                //     const pointPosition = new Float32Array(POINTS)
+                //     // 把准备的单个数据赋值到 shader 里面
+                //     webgl.vertexAttrib4fv(position, pointPosition)
+                // }
+            }
+        }
+
+        function initProgram() {
+            // 创建顶点 shader 容器
+            const vsShader = createShader(webgl.VERTEX_SHADER, vertexString)
+            // 创建片元 shader 容器
+            const fsShader = createShader(webgl.FRAGMENT_SHADER, fragmentString)
+
+            // 创建 program
+            const program = createProgram(vsShader, fsShader)
+
+            // 获取shader里面的一个变量 a_position 是顶点着色器里面的变量
+            const position = webgl.getAttribLocation(program, 'a_position')
+
+            return {
+                program,
+                vertexParam: {
+                    position
+                }
+            }
+            function createShader(shaderName, shaderText) {
+                const shader = webgl.createShader(shaderName)
+                // 将字符串格式的着色器程度与 shader 容器进行绑定
+                webgl.shaderSource(shader, shaderText)
+                // 编译
+                webgl.compileShader(shader)
+                if (!webgl.getShaderParameter(shader, webgl.COMPILE_STATUS)) {
+                    alert(webgl.getShaderInfoLog(shader))
+                    return
+                }
+                return shader
+            }
+
+            function createProgram(vsShader, fsShader) {
+                // 创建项目，要把 shader 复制给项目，使其在项目中能够应用起来
+                const program = webgl.createProgram()
+
+                // webgl 容器和 shader 进行绑定
+                webgl.attachShader(program, vsShader)
+                webgl.attachShader(program, fsShader)
+
+                // webgl 对象和当前的项目进行链接
+                webgl.linkProgram(program)
+
+                if (!webgl.getProgramParameter(program, webgl.LINK_STATUS)) {
+                    let err = webgl.getProgramInfoLog(program)
+                    alert(err)
+                    return
+                }
+
+                return program
+            }
+        }
+
+        // 数据缓冲区初始化函数
+        function initBuffer() {
+            // 动态绘制点
+            // dynamicPaint(position)
+            // 绑定数据缓冲区
+            bindDataBuffer()
+            // 绑定索引缓冲区
+            bindIndexBuffer()
+        }
+
+        function render(programInfo) {
+            // 定义2D的可视域范围
+            webgl.viewport(0, 0, canvas.clientWidth, canvas.clientHeight)
+            // 对 projMat4 赋值为当前 canvas 的投影坐标系
+            mat4.ortho(0, canvas.clientWidth, canvas.clientHeight, 0, -1.0, 1.0, projMat4)
+
+            // 冲刷一下
+            webgl.clearColor(0.0, 0.0, 0.0, 1.0)
+            // 颜色检测
+            webgl.clear(webgl.COLOR_BUFFER_BIT | webgl.DEPTH_BUFFER_BIT)
+
+            const { program, vertexParam: { position } } = programInfo
+
+            // 使用当前项目到 webgl 的进程中
+            webgl.useProgram(program)
+
+            // 启用 position 这个变量
+            webgl.enableVertexAttribArray(position)
+            // 赋值的变量 + 每个点需要提取几个数据 + 数据类型 + 是否归一化 + 每个点有四个数据，每个数据四个字节 + 偏移量
+            webgl.vertexAttribPointer(position, 4, webgl.FLOAT, false, 4 * 4, 0 * 4)
+
+            // 设置投影坐标系
+            setUniformMatrix(program)
+
+
+            // 绘制的模型 + 从数组的第0项开始 + 绘制几个点
+            webgl.drawArrays(webgl.POINTS, 0, POINTS.length / 4)
+
+            // webgl.drawArrays(webgl.LINES, 0, POINTS.length / 4)
+            // webgl.drawArrays(webgl.LINE_STRIP, 0, POINTS.length / 4)
+            // webgl.drawArrays(webgl.LINE_LOOP, 0, POINTS.length / 4)
+
+            // webgl.drawArrays(webgl.TRIANGLES, 0, POINTS.length / 4)
+            // 接下来的点和前一个三角形绘制的2，3个点绘制成新三角形，注意都是逆时针绘制
+            // webgl.drawArrays(webgl.TRIANGLE_STRIP, 0, POINTS.length / 4)
+            // 接下来的点和前一个三角形绘制出来的最后一条边形成新的三角形
+            // webgl.drawArrays(webgl.TRIANGLE_FAN, 0, POINTS.length / 4)
+
+
+            // 绘制的模式 + 取几个索引 + 索引的类型 + 偏移量
+            // webgl.drawElements(webgl.TRIANGLES, INDEXS.length, webgl.UNSIGNED_SHORT, 0)
+        }
+
+        // 动态绘制点
+        function dynamicPaint(position) {
+            // 转化为投影坐标系
+            function toOrthoCoord(originX, originY, rect) {
+                // 将原坐标减去 canvas 与屏幕边缘的距离，然后减去 canvas 一半的宽高
+                // 因为值范围在(-1，1)，所以需要再除以这个值，如果是 y 轴需要转换方向
+                let { left, top } = rect
+                let x = ((originX - left) - 512) / 512
+                let y = -((originY - top) - 350) / 350
+                return { x, y }
+            }
+
+            window.addEventListener('mousemove', (e) => {
+                const x = e.clientX
+                const y = e.clientY
+                // 转化坐标系
+                // const rect = e.target.getBoundingClientRect()
+                // const { x, y } = toOrthoCoord(e.clientX, e.clientY, rect)
+                POINTS.push(x, y, 0, 1.0)
+                bindDataBuffer(position)
+                render()
+            })
+        }
+
+        // 绑定数据缓冲区
+        function bindDataBuffer() {
+            bindBuffer(POINTS, Float32Array, webgl.ARRAY_BUFFER, webgl.STATIC_DRAW)
+        }
+
+        // 绑定索引缓冲区
+        function bindIndexBuffer() {
+            bindBuffer(INDEXS, Uint16Array, webgl.ELEMENT_ARRAY_BUFFER, webgl.STATIC_DRAW)
+        }
+
+        function bindBuffer(data, DataType, BufferType, usage) {
+            // 创建一个 Buffer 缓冲区
+            const dataBuffer = webgl.createBuffer()
+            // 绑定当前 Buffer 的格式
+            webgl.bindBuffer(BufferType, dataBuffer)
+            // 绑定 usage 形式的 Buffer 数据
+            webgl.bufferData(BufferType, new DataType(data), usage)
+        }
+
+        // 设置投影坐标系
+        function setUniformMatrix(program) {
+            // 获取投影坐标系矩阵
+            let uniformProj = webgl.getUniformLocation(program, 'proj')
+            // 投影坐标系赋值为 projMat4
+            webgl.uniformMatrix4fv(uniformProj, false, projMat4)
+        }
+    </script>
+</head>
+
+
+<body onload="init()">
+    <canvas id="webglCanvas" width="1024" height="700"></canvas>
+</body>
+
+</html>

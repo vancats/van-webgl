@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake</title>
+    <script>
+
+        /** @type {WebGLRenderingContext} */
+        let webgl
+        let webglNode
+        function init() {
+            initWebgl()
+            initShader()
+            initEvent()
+            initBuffer()
+            draw()
+        }
+
+        function initWebgl() {
+            /** @type {HTMLCanvasElement} */
+            webglNode = document.querySelector('#webglCanvas')
+            webgl = webglNode.getContext('webgl')
+            webgl.viewport(0, 0, webglNode.clientWidth, webglNode.clientHeight)
+        }
+
+        function initShader() {
+            const vertexString = `
+                attribute vec4 a_position;
+                uniform float countX;
+                uniform float countY;
+                void main() {
+                    gl_Position = vec4(a_position.x + countX, a_position.y + countY, 0, 1);
+                    gl_PointSize = 30.0;
+                }
+            `
+
+            const fragmentString = `
+                precision mediump float;
+                void main() {
+                    gl_FragColor = vec4(0, 0, 1.0, 1.0);
+                }
+            `
+
+            const vsShader = webgl.createShader(webgl.VERTEX_SHADER)
+            const fsShader = webgl.createShader(webgl.FRAGMENT_SHADER)
+
+            webgl.shaderSource(vsShader, vertexString)
+            webgl.shaderSource(fsShader, fragmentString)
+
+            webgl.compileShader(vsShader)
+            webgl.compileShader(fsShader)
+
+            if (!webgl.getShaderParameter(vsShader, webgl.COMPILE_STATUS)) {
+                const err = webgl.getShaderInfoLog(vsShader)
+                alert(err)
+                return
+            }
+
+            if (!webgl.getShaderParameter(fsShader, webgl.COMPILE_STATUS)) {
+                const err = webgl.getShaderInfoLog(fsShader)
+                alert(err)
+                return
+            }
+
+            const program = webgl.createProgram()
+
+            webgl.attachShader(program, vsShader)
+            webgl.attachShader(program, fsShader)
+
+            webgl.linkProgram(program)
+
+            if (!webgl.getProgramParameter(program, webgl.LINK_STATUS)) {
+                const err = webgl.getProgramInfoLog(program)
+                alert(err)
+                return
+            }
+
+            webgl.useProgram(program)
+
+            webgl.program = program
+        }
+
+        const POINTS = []
+        function initBuffer() {
+            POINTS.push(0, 0, 0, 1)
+            const position = new Float32Array(POINTS)
+            const buffer = webgl.createBuffer()
+            webgl.bindBuffer(webgl.ARRAY_BUFFER, buffer)
+            webgl.bufferData(webgl.ARRAY_BUFFER, position, webgl.STATIC_DRAW)
+
+            const aPosition = webgl.getAttribLocation(webgl.program, 'a_position')
+            webgl.vertexAttribPointer(aPosition, 4, webgl.FLOAT, false, 0, 0)
+            webgl.enableVertexAttribArray(aPosition)
+
+            const countX = webgl.getUniformLocation(webgl.program, 'countX')
+            webgl.uniform1f(countX, cntX)
+            const countY = webgl.getUniformLocation(webgl.program, 'countY')
+            webgl.uniform1f(countY, cntY)
+
+        }
+
+        function draw() {
+            webgl.clearColor(0, 0, 0, 1)
+            webgl.clear(webgl.COLOR_BUFFER_BIT)
+            webgl.drawArrays(webgl.POINTS, 0, 2)
+        }
+
+        let cntX = 0
+        let cntY = 0
+        let direction = 0
+        let speed = 0.005
+        function initEvent() {
+            window.onkeydown = handleKeydown
+            move()
+        }
+
+        function handleKeydown(e) {
+            switch (String.fromCharCode(e.keyCode)) {
+                case 'W':
+                    direction = 0
+                    break
+                case 'S':
+                    direction = 1
+                    break
+                case 'A':
+                    direction = 2
+                    break
+                case 'D':
+                    direction = 3
+                    break
+            }
+        }
+
+        function move() {
+            switch (direction) {
+                case 0:
+                    cntY += speed
+                    if (cntY >= 1) {
+                        cntY -= 2
+                    }
+                    break
+                case 1:
+                    cntY -= speed
+                    if (cntY <= -1) {
+                        cntY += 2
+                    }
+                    break
+                case 2:
+                    cntX -= speed
+                    if (cntX <= -1) {
+                        cntX += 2
+                    }
+                    break
+                case 3:
+                    cntX += speed
+                    if (cntX >= 1) {
+                        cntX -= 2
+                    }
+                    break
+            }
+        }
+
+        function onload() {
+            init()
+            window.requestAnimationFrame(onload)
+        }
+
+    </script>
+</head>
+
+<body onload="onload()">
+    <canvas id="webglCanvas" width="500" height="500"></canvas>
+</body>
+
+</html>
