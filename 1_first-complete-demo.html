@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>First Complete Demo</title>
     <script src="./assets/js/glmatrix-0.9.6.min.js"></script>
-    <script src="https://webglfundamentals.org/webgl/resources/webgl-utils.js"></script>
+    <script src="./assets/js/webgl-utils.js"></script>
 
     <script>
         /** @type { WebGLRenderingContext } */
@@ -15,34 +15,43 @@
         const projMat4 = mat4.create() // 创建一个初始化的矩阵
         const POINTS = []
         const INDEXS = []
+        const COLORS = []
+        const programs = []
+        const bufferList = {}
         const vertexString = `
             attribute vec4 a_position;
             uniform mat4 proj;
+
+            attribute vec4 a_color;
+            varying vec4 v_color;
             void main() {
                 gl_Position = proj * a_position;
                 gl_PointSize = 10.0;
+
+                v_color = a_color;
             }
         `
 
         const fragmentString = `
             precision mediump float;
+            varying vec4 v_color;
             void main() {
-                gl_FragColor = vec4(1, 0, 0, 1);
+                gl_FragColor = v_color;
             }
         `
 
         function init() {
             initWebgl()
-            const programInfo = initProgram(vertexString, fragmentString)
-            const bufferList = initBuffer()
-            window.addEventListener('mousemove', (e) => {
-                const x = e.clientX
-                const y = e.clientY
-                POINTS.push(x, y, 0, 1)
-                initBuffer()
-                render(programInfo)
-            })
-            render(programInfo)
+            initProgram(vertexString, fragmentString)
+            initBuffer()
+            // window.addEventListener('mousemove', (e) => {
+            //     const x = e.clientX
+            //     const y = e.clientY
+            //     POINTS.push(x, y, 0, 1)
+            //     initBuffer()
+            //     render(programInfo)
+            // })
+            render()
         }
 
         function initWebgl() {
@@ -51,11 +60,21 @@
             gl = canvas.getContext('webgl')
             mockData()
             function mockData() {
-                POINTS.push(100, 200, 0, 1)
-                POINTS.push(200, 200, 0, 1)
-                POINTS.push(100, 400, 0, 1)
-                POINTS.push(500, 250, 0, 1)
-                INDEXS.push(0, 1, 2, 0, 2, 3)
+                POINTS.push(100, 100, 0, 1)
+                POINTS.push(400, 100, 0, 1)
+                POINTS.push(100, 300, 0, 1)
+                POINTS.push(400, 100, 0, 1)
+                POINTS.push(100, 300, 0, 1)
+                POINTS.push(400, 300, 0, 1)
+
+                INDEXS.push(0, 1, 2, 3, 4, 5)
+
+                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
+                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
+                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
+                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
+                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
+                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
             }
         }
 
@@ -67,15 +86,20 @@
 
             const position = gl.getAttribLocation(program, 'a_position')
             const projection = gl.getUniformLocation(program, 'proj')
+            const color = gl.getAttribLocation(program, 'a_color')
 
-            return {
+            const programInfo = {
+                key: 'first',
                 program,
                 vertexParam: {
                     position,
-                    projection
+                    projection,
+                    color,
                 },
                 fragmentParam: {}
             }
+
+            programs.push(programInfo)
 
             function createShader(type, text) {
                 const shader = gl.createShader(type)
@@ -108,14 +132,19 @@
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(INDEXS), gl.STATIC_DRAW)
 
-            return {
-                dataBuffer,
-                indexBuffer
-            }
+            const colorBuffer = gl.createBuffer()
+            gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(COLORS), gl.STATIC_DRAW)
+
+            bufferList.dataBuffer = dataBuffer
+            bufferList.indexBuffer = indexBuffer
+            bufferList.colorBuffer = colorBuffer
         }
 
-        function render(programInfo) {
+        function render() {
+            const programInfo = programs[0]
 
+            const { program, vertexParam: { position, color, projection } } = programInfo
             webglUtils.resizeCanvasToDisplaySize(gl.canvas)
 
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
@@ -124,25 +153,27 @@
 
             gl.clearColor(0, 0, 0, 1)
             gl.clear(gl.COLOR_BUFFER_BIT)
-            gl.useProgram(programInfo.program)
+            gl.useProgram(program)
 
-            // const { dataBuffer } = bufferList
-            // gl.bindBuffer(gl.ARRAY_BUFFER, dataBuffer)
-
-            const { position } = programInfo.vertexParam
+            const { dataBuffer, colorBuffer } = bufferList
             gl.enableVertexAttribArray(position)
+            gl.bindBuffer(gl.ARRAY_BUFFER, dataBuffer)
             gl.vertexAttribPointer(position, 4, gl.FLOAT, false, 0, 0)
 
-            gl.uniformMatrix4fv(programInfo.vertexParam.projection, false, projMat4)
+            gl.enableVertexAttribArray(color)
+            gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
+            gl.vertexAttribPointer(color, 4, gl.FLOAT, false, 0, 0)
 
-            // gl.drawArrays(gl.LINE_LOOP, 0, POINTS.length / 4)
+            gl.uniformMatrix4fv(projection, false, projMat4)
+
+            // gl.drawArrays(gl.LINE_LOOP,0, POINTS.length / 4)
             gl.drawElements(gl.TRIANGLES, INDEXS.length, gl.UNSIGNED_SHORT, 0)
         }
     </script>
 </head>
 
 <body onload="init()">
-    <canvas id="webglCanvas" width="1024" height="700"></canvas>
+    <canvas id="webglCanvas" width="800" height="500"></canvas>
 </body>
 
 </html>
