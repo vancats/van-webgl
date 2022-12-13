@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticker</title>
+    <script src="../assets/js/glmatrix-0.9.6.min.js"></script>
+    <script src="../assets/js/webgl-utils.js"></script>
+
+    <script>
+        /** @type {WebGLRenderingContext} */
+        let gl
+        const POINTS = []
+        const INDEXS = []
+        const programs = []
+        const bufferList = {}
+        const vertexString = `
+            attribute vec4 a_position;
+            uniform mat4 scale;
+            void main() {
+                gl_Position = scale * a_position;
+                gl_PointSize = 10.0;
+            }
+        `
+
+        const fragmentString = `
+            void main() {
+                gl_FragColor = vec4(1, 0, 0, 1);
+            }
+        `
+
+        function init() {
+            initWebgl()
+            initProgram()
+            initBuffer()
+            renderTick()
+        }
+
+        function initWebgl() {
+            const canvas = document.querySelector('#webgl')
+            gl = canvas.getContext('webgl')
+            mockData()
+            function mockData() {
+                POINTS.push(0, -0.005, 0, 1)
+                POINTS.push(0.6, 0.005, 0, 1)
+                POINTS.push(0.6, -0.005, 0, 1)
+                POINTS.push(0, -0.005, 0, 1)
+                POINTS.push(0.6, 0.005, 0, 1)
+                POINTS.push(0, 0.005, 0, 1)
+            }
+        }
+
+        function initProgram() {
+            const vsShader = createShader(gl.VERTEX_SHADER, vertexString)
+            const fsShader = createShader(gl.FRAGMENT_SHADER, fragmentString)
+            const program = createProgram(vsShader, fsShader)
+
+            const position = gl.getAttribLocation(program, 'a_position')
+
+            const scale = gl.getUniformLocation(program, 'scale')
+
+            const programInfo = {
+                key: 'init',
+                program,
+                vertexParam: {
+                    position,
+                    scale,
+                },
+                fragmentParam: {}
+            }
+            programs.push(programInfo)
+
+            function createShader(type, text) {
+                const shader = gl.createShader(type)
+                gl.shaderSource(shader, text)
+                gl.compileShader(shader)
+                const success = gl.getShaderParameter(shader, gl.COMPILE_STATUS)
+                if (success) return shader
+                alert(gl.getShaderInfoLog(shader))
+                gl.deleteShader(shader)
+            }
+
+            function createProgram(vsShader, fsShader) {
+                const program = gl.createProgram()
+                gl.attachShader(program, vsShader)
+                gl.attachShader(program, fsShader)
+                gl.linkProgram(program)
+                const success = gl.getProgramParameter(program, gl.LINK_STATUS)
+                if (success) return program
+                alert(gl.getProgramInfoLog(program))
+                gl.deleteProgram(program)
+            }
+        }
+
+        function initBuffer() {
+            const dataBuffer = gl.createBuffer()
+            gl.bindBuffer(gl.ARRAY_BUFFER, dataBuffer)
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(POINTS), gl.STATIC_DRAW)
+
+            bufferList.dataBuffer = dataBuffer
+        }
+
+        let count = 0
+        function render() {
+            webglUtils.resizeCanvasToDisplaySize(gl.canvas)
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
+
+            gl.clearColor(0, 0, 0, 1)
+            gl.clear(gl.COLOR_BUFFER_BIT)
+
+            const programInfo = programs[0]
+            const { program, vertexParam: { position, scale } } = programInfo
+            const { dataBuffer } = bufferList
+
+            gl.useProgram(program)
+
+            gl.enableVertexAttribArray(position)
+            gl.bindBuffer(gl.ARRAY_BUFFER, dataBuffer)
+            gl.vertexAttribPointer(position, 4, gl.FLOAT, false, 0, 0)
+
+            count++
+            const s = mat4.create()
+            const radius = -Math.PI / 180 * 360 / 60 * count
+
+            // 时针
+            mat4.identity(s)
+            mat4.scale(s, [0.33, 2, 1], s)
+            mat4.rotate(s, radius / 3600, [0, 0, 1], s)
+
+            gl.uniformMatrix4fv(scale, false, s)
+            gl.drawArrays(gl.TRIANGLES, 0, POINTS.length / 4)
+
+            // 分针
+            mat4.identity(s)
+            mat4.scale(s, [0.67, 1.5, 1], s)
+            mat4.rotate(s, radius / 60, [0, 0, 1], s)
+
+            gl.uniformMatrix4fv(scale, false, s)
+            gl.drawArrays(gl.TRIANGLES, 0, POINTS.length / 4)
+
+            // 秒针
+            mat4.identity(s)
+            mat4.scale(s, [1, 1, 1], s)
+            mat4.rotate(s, radius, [0, 0, 1], s)
+
+            gl.uniformMatrix4fv(scale, false, s)
+            gl.drawArrays(gl.TRIANGLES, 0, POINTS.length / 4)
+        }
+
+        function renderTick() {
+            render()
+            setTimeout(renderTick, 1000)
+        }
+
+    </script>
+
+</head>
+
+<body onload="init()">
+    <canvas id="webgl" width="1024" height="728"></canvas>
+</body>
+
+</html>
