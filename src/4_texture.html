@@ -12,31 +12,162 @@
     <script>
         /** @type { WebGLRenderingContext } */
         let gl
-        const projMat4 = glMatrix.mat4.create() // 创建一个初始化的矩阵
         const POINTS = []
         const INDEXS = []
-        const COLORS = []
+
         const programs = []
         const bufferList = {}
+        const textureList = []
+
+        // Define several convolution kernels
+        const kernels = {
+            normal: [
+                0, 0, 0,
+                0, 1, 0,
+                0, 0, 0
+            ],
+            gaussianBlur: [
+                0.045, 0.122, 0.045,
+                0.122, 0.332, 0.122,
+                0.045, 0.122, 0.045
+            ],
+            gaussianBlur2: [
+                1, 2, 1,
+                2, 4, 2,
+                1, 2, 1
+            ],
+            gaussianBlur3: [
+                0, 1, 0,
+                1, 1, 1,
+                0, 1, 0
+            ],
+            unsharpen: [
+                -1, -1, -1,
+                -1, 9, -1,
+                -1, -1, -1
+            ],
+            sharpness: [
+                0, -1, 0,
+                -1, 5, -1,
+                0, -1, 0
+            ],
+            sharpen: [
+                -1, -1, -1,
+                -1, 16, -1,
+                -1, -1, -1
+            ],
+            edgeDetect: [
+                -0.125, -0.125, -0.125,
+                -0.125, 1, -0.125,
+                -0.125, -0.125, -0.125
+            ],
+            edgeDetect2: [
+                -1, -1, -1,
+                -1, 8, -1,
+                -1, -1, -1
+            ],
+            edgeDetect3: [
+                -5, 0, 0,
+                0, 0, 0,
+                0, 0, 5
+            ],
+            edgeDetect4: [
+                -1, -1, -1,
+                0, 0, 0,
+                1, 1, 1
+            ],
+            edgeDetect5: [
+                -1, -1, -1,
+                2, 2, 2,
+                -1, -1, -1
+            ],
+            edgeDetect6: [
+                -5, -5, -5,
+                -5, 39, -5,
+                -5, -5, -5
+            ],
+            sobelHorizontal: [
+                1, 2, 1,
+                0, 0, 0,
+                -1, -2, -1
+            ],
+            sobelVertical: [
+                1, 0, -1,
+                2, 0, -2,
+                1, 0, -1
+            ],
+            previtHorizontal: [
+                1, 1, 1,
+                0, 0, 0,
+                -1, -1, -1
+            ],
+            previtVertical: [
+                1, 0, -1,
+                1, 0, -1,
+                1, 0, -1
+            ],
+            boxBlur: [
+                0.111, 0.111, 0.111,
+                0.111, 0.111, 0.111,
+                0.111, 0.111, 0.111
+            ],
+            triangleBlur: [
+                0.0625, 0.125, 0.0625,
+                0.125, 0.25, 0.125,
+                0.0625, 0.125, 0.0625
+            ],
+            emboss: [
+                -2, -1, 0,
+                -1, 1, 1,
+                0, 1, 2
+            ]
+        }
+        let initialSelection = 'edgeDetect2'
+        const images = ['../assets/img/山水.png', '../assets/img/fog.png']
+        let count = 0
+
         const vertexString = `
             attribute vec4 a_position;
             uniform mat4 proj;
 
-            attribute vec4 a_color;
-            varying vec4 v_color;
+            attribute vec2 a_texCoord;
+            varying vec2 v_texCoord;
+
             void main() {
                 gl_Position = proj * a_position;
                 gl_PointSize = 10.0;
 
-                v_color = a_color;
+                v_texCoord = a_texCoord;
             }
         `
 
         const fragmentString = `
             precision mediump float;
-            varying vec4 v_color;
+
+            uniform sampler2D u_texture0;
+            uniform sampler2D u_texture1;
+            varying vec2 v_texCoord;
+            uniform float u_animation;
+
+            uniform vec2 u_textureSize;
+            uniform float u_kernel[9];
+            uniform float u_kernelWeight;
+
             void main() {
-                gl_FragColor = v_color;
+                vec2 onePixel = vec2(1, 1) / u_textureSize;
+                vec4 texture0 =
+                    texture2D(u_texture0, v_texCoord + onePixel * vec2(-1, -1)) * u_kernel[0] +
+                    texture2D(u_texture0, v_texCoord + onePixel * vec2( 0, -1)) * u_kernel[1] +
+                    texture2D(u_texture0, v_texCoord + onePixel * vec2( 1, -1)) * u_kernel[2] +
+                    texture2D(u_texture0, v_texCoord + onePixel * vec2(-1,  0)) * u_kernel[3] +
+                    texture2D(u_texture0, v_texCoord + onePixel * vec2( 0,  0)) * u_kernel[4] +
+                    texture2D(u_texture0, v_texCoord + onePixel * vec2( 1,  0)) * u_kernel[5] +
+                    texture2D(u_texture0, v_texCoord + onePixel * vec2(-1,  1)) * u_kernel[6] +
+                    texture2D(u_texture0, v_texCoord + onePixel * vec2( 0,  1)) * u_kernel[7] +
+                    texture2D(u_texture0, v_texCoord + onePixel * vec2( 1,  1)) * u_kernel[8] ;
+
+                vec4 texture1 = texture2D(u_texture1, vec2(v_texCoord.x + u_animation, v_texCoord.y));
+                gl_FragColor = texture0 + texture1;
             }
         `
 
@@ -44,7 +175,12 @@
             initWebgl()
             initProgram(vertexString, fragmentString)
             initBuffer()
-            initTexture()
+            initTextures()
+            initUi()
+            ticker()
+        }
+        function ticker() {
+            requestAnimationFrame(ticker)
             render()
         }
 
@@ -54,21 +190,12 @@
             gl = canvas.getContext('webgl')
             mockData()
             function mockData() {
-                POINTS.push(100, 100, 0, 1)
-                POINTS.push(400, 100, 0, 1)
-                POINTS.push(100, 300, 0, 1)
-                POINTS.push(400, 100, 0, 1)
-                POINTS.push(100, 300, 0, 1)
-                POINTS.push(400, 300, 0, 1)
+                POINTS.push(0, 0, 0, 1, 0, 0)
+                POINTS.push(600, 0, 0, 1, 1, 0)
+                POINTS.push(0, 400, 0, 1, 0, 1)
+                POINTS.push(600, 400, 0, 1, 1, 1)
 
-                INDEXS.push(0, 1, 2, 3, 4, 5)
-
-                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
-                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
-                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
-                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
-                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
-                COLORS.push(Math.random(), Math.random(), Math.random(), 1)
+                INDEXS.push(1, 0, 2, 1, 2, 3)
             }
         }
 
@@ -80,7 +207,15 @@
 
             const position = gl.getAttribLocation(program, 'a_position')
             const projection = gl.getUniformLocation(program, 'proj')
-            const color = gl.getAttribLocation(program, 'a_color')
+
+            const texCoord = gl.getAttribLocation(program, 'a_texCoord')
+            const texture0 = gl.getUniformLocation(program, 'u_texture0')
+            const texture1 = gl.getUniformLocation(program, 'u_texture1')
+            const animation = gl.getUniformLocation(program, 'u_animation')
+
+            const kernel = gl.getUniformLocation(program, "u_kernel[0]")
+            const kernelWeight = gl.getUniformLocation(program, "u_kernelWeight")
+            const textureSize = gl.getUniformLocation(program, "u_textureSize")
 
             const programInfo = {
                 key: 'first',
@@ -88,11 +223,17 @@
                 vertexParam: {
                     position,
                     projection,
-                    color,
                 },
-                fragmentParam: {}
+                fragmentParam: {
+                    texCoord,
+                    texture0,
+                    texture1,
+                    animation,
+                    kernel,
+                    kernelWeight,
+                    textureSize,
+                }
             }
-
             programs.push(programInfo)
 
             function createShader(type, text) {
@@ -126,52 +267,121 @@
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(INDEXS), gl.STATIC_DRAW)
 
-            const colorBuffer = gl.createBuffer()
-            gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(COLORS), gl.STATIC_DRAW)
-
             bufferList.dataBuffer = dataBuffer
             bufferList.indexBuffer = indexBuffer
-            bufferList.colorBuffer = colorBuffer
         }
 
-        function initTexture() {
+        function initTextures() {
+            textureList.length = 0
+            textureList.push(...images.map(src => initTexture(src)))
+        }
 
+        function initTexture(src) {
+            const texture = gl.createTexture()
+            texture.image = new Image()
+            texture.image.src = src // 必须在同一域名下
+            texture.image.onload = function () {
+                handleTexture()
+            }
+            return texture
+
+            function handleTexture() {
+                gl.bindTexture(gl.TEXTURE_2D, texture)
+                // 坐标反向
+                // gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 666)
+
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texture.image)
+            }
+        }
+
+        function initUi() {
+
+            let ui = document.querySelector("#ui")
+            let select = document.createElement("select")
+            for (let name in kernels) {
+                let option = document.createElement("option")
+                option.value = name
+                if (name === initialSelection) {
+                    option.selected = true
+                }
+                option.appendChild(document.createTextNode(name))
+                select.appendChild(option)
+            }
+            select.onchange = function (event) {
+                initialSelection = this.options[this.selectedIndex].value
+                render()
+            }
+            ui.appendChild(select)
         }
 
         function render() {
-            const programInfo = programs[0]
-
-            const { program, vertexParam: { position, color, projection } } = programInfo
             webglUtils.resizeCanvasToDisplaySize(gl.canvas)
-
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
-            // 对 projMat4 赋值为当前 canvas 的投影坐标系
-            glMatrix.mat4.ortho(projMat4, 0, gl.canvas.width, gl.canvas.height, 0, -1.0, 1.0)
 
             gl.clearColor(0, 0, 0, 1)
             gl.clear(gl.COLOR_BUFFER_BIT)
+
+            // 对 projMat4 赋值为当前 canvas 的投影坐标系
+            const projMat4 = glMatrix.mat4.create() // 创建一个初始化的矩阵
+            glMatrix.mat4.ortho(projMat4, 0, gl.canvas.width, gl.canvas.height, 0, -1.0, 1.0)
+
+            const programInfo = programs[0]
+            const {
+                program,
+                vertexParam: { position, projection },
+                fragmentParam: { texCoord, texture0, texture1, animation, kernel, kernelWeight, textureSize }
+            } = programInfo
+
             gl.useProgram(program)
 
-            const { dataBuffer, colorBuffer } = bufferList
-            gl.enableVertexAttribArray(position)
+            const { dataBuffer } = bufferList
             gl.bindBuffer(gl.ARRAY_BUFFER, dataBuffer)
-            gl.vertexAttribPointer(position, 4, gl.FLOAT, false, 0, 0)
 
-            gl.enableVertexAttribArray(color)
-            gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
-            gl.vertexAttribPointer(color, 4, gl.FLOAT, false, 0, 0)
+            // 设置顶点坐标
+            gl.enableVertexAttribArray(position)
+            gl.vertexAttribPointer(position, 4, gl.FLOAT, false, 6 * 4, 0)
 
+            // 设置纹理坐标
+            gl.enableVertexAttribArray(texCoord)
+            gl.vertexAttribPointer(texCoord, 2, gl.FLOAT, false, 6 * 4, 4 * 4)
+
+            // 设置投影
             gl.uniformMatrix4fv(projection, false, projMat4)
 
-            // gl.drawArrays(gl.LINE_LOOP,0, POINTS.length / 4)
+            gl.uniform1f(animation, (count += 0.01))
+
+            gl.activeTexture(gl.TEXTURE0)
+            gl.bindTexture(gl.TEXTURE_2D, textureList[0])
+            gl.uniform1i(texture0, 0)
+
+            gl.activeTexture(gl.TEXTURE1)
+            gl.bindTexture(gl.TEXTURE_2D, textureList[1])
+            gl.uniform1i(texture1, 1)
+
+
+            gl.uniform2f(textureSize, gl.canvas.width, gl.canvas.height)
+            gl.uniform1fv(kernel, kernels[initialSelection])
+            gl.uniform1f(kernelWeight, computeKernelWeight(kernels[initialSelection]))
+
+            // gl.drawArrays(gl.TRIANGLES, 0, POINTS.length / 4)
             gl.drawElements(gl.TRIANGLES, INDEXS.length, gl.UNSIGNED_SHORT, 0)
+
+            function computeKernelWeight(kernel) {
+                let weight = kernel.reduce((p, c) => p + c, 0)
+                return weight <= 0 ? 1 : weight
+            }
         }
     </script>
 </head>
 
 <body onload="init()">
-    <canvas id="webglCanvas" width="800" height="500"></canvas>
+    <canvas id="webglCanvas" width="600" height="400"></canvas>
+    <div id="ui"></div>
 </body>
 
 </html>
