@@ -6,13 +6,13 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>First Complete Demo</title>
-    <script src="./assets/js/glmatrix-0.9.6.min.js"></script>
+    <script src="./assets/js/gl-matrix.js"></script>
     <script src="./assets/js/webgl-utils.js"></script>
 
     <script>
         /** @type { WebGLRenderingContext } */
         let gl
-        const projMat4 = mat4.create() // 创建一个初始化的矩阵
+        const projMat4 = glMatrix.mat4.create() // 创建一个初始化的矩阵
         const POINTS = []
         const INDEXS = []
         const COLORS = []
@@ -149,7 +149,7 @@
 
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
             // 对 projMat4 赋值为当前 canvas 的投影坐标系
-            mat4.ortho(0, gl.canvas.width, gl.canvas.height, 0, -1.0, 1.0, projMat4)
+            glMatrix.mat4.ortho(projMat4, 0, gl.canvas.width, gl.canvas.height, 0, -1.0, 1.0)
 
             gl.clearColor(0, 0, 0, 1)
             gl.clear(gl.COLOR_BUFFER_BIT)
