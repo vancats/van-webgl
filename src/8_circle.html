@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circle</title>
+    <script src="../assets/js/gl-matrix.js"></script>
+    <script src="../assets/js/webgl-utils.js"></script>
+
+    <script>
+        const vertexString = `
+            uniform mat4 u_matrix;
+            attribute vec4 a_position;
+
+            attribute vec4 a_normal;
+
+            varying vec4 v_position;
+            varying vec4 v_normal;
+
+            uniform vec4 u_diffuseLight;
+            uniform vec4 u_diffuseLightDirection;
+            uniform vec4 u_ambientLight;
+            uniform vec4 u_pointLight;
+            uniform vec4 u_pointLightPosition;
+
+            varying vec4 v_color;
+            void main() {
+                gl_Position = u_matrix * a_position;
+
+
+                // v_position = gl_Position;
+                // v_normal = a_normal;
+
+                vec4 normal = normalize(a_normal);
+
+                vec4 diffuseLightDirection = normalize(u_diffuseLightDirection);
+                float nDotL = max(dot(normal, diffuseLightDirection), 0.0);
+
+                vec4 pointLightDirection = normalize(vec4(gl_Position - u_pointLightPosition));
+                float nDotL2 = max(dot(normal, pointLightDirection), 0.0);
+
+                vec4 diffuse = u_diffuseLight * vec4(1, 0, 0, 1) * nDotL;
+                vec4 ambient = u_ambientLight * vec4(1, 0, 1, 1);
+                vec4 point = u_pointLight * vec4(1, 0, 0, 1) * nDotL2;
+                v_color = vec4(diffuse + ambient + point);
+            }
+        `
+
+        const fragmentString = `
+            precision mediump float;
+            varying vec4 v_color;
+
+            // varying vec4 v_position;
+            // varying vec4 v_normal;
+            // uniform vec4 u_diffuseLight;
+            // uniform vec4 u_diffuseLightDirection;
+            // uniform vec4 u_ambientLight;
+            // uniform vec4 u_pointLight;
+            // uniform vec4 u_pointLightPosition;
+
+            void main() {
+                gl_FragColor = v_color;
+
+                // vec4 normal = normalize(v_normal);
+
+                // vec4 diffuseLightDirection = normalize(u_diffuseLightDirection);
+                // float nDotL = max(dot(normal, diffuseLightDirection), 0.0);
+
+                // vec4 pointLightDirection = normalize(vec4(v_position - u_pointLightPosition));
+                // float nDotL2 = max(dot(normal, pointLightDirection), 0.0);
+
+                // vec4 diffuse = u_diffuseLight * vec4(1, 0, 0, 1) * nDotL;
+                // vec4 ambient = u_ambientLight * vec4(1, 1, 1, 1);
+                // vec4 point = u_pointLight * vec4(1, 0, 0, 1) * nDotL2;
+
+                // gl_FragColor = vec4(diffuse + ambient);
+            }
+        `
+
+        /** @type WebGLRenderingContext */
+        let gl
+        const POINTS = []
+        const INDEXS = []
+        const NORMALS = []
+
+        const programs = []
+        const bufferList = {}
+
+        let offsetX = 0
+        let offsetY = 0
+        let offsetWheel = 0
+
+        function init() {
+            initWebgl()
+            initProgram(vertexString, fragmentString)
+            initBuffer()
+            initEvent()
+            ticker()
+        }
+
+        function ticker() {
+            render()
+            requestAnimationFrame(ticker)
+        }
+
+        function initWebgl() {
+            const node = document.querySelector('#webgl')
+            gl = node.getContext('webgl')
+            mockData()
+            function mockData() {
+                let sphereNum = 127
+
+                for (let i = 0; i <= sphereNum; i++) {
+                    const ai = Math.PI * i / sphereNum
+                    const ci = Math.cos(ai)
+                    const si = Math.sin(ai)
+                    for (let j = 0; j <= sphereNum; j++) {
+                        const aj = 2 * Math.PI * j / sphereNum
+                        const cj = Math.cos(aj)
+                        const sj = Math.sin(aj)
+                        POINTS.push(si * sj, ci, si * cj, 1)
+                    }
+                }
+
+                for (let i = 0; i < sphereNum; i++) {
+                    for (let j = 0; j < sphereNum; j++) {
+                        const p1 = j * (sphereNum + 1) + i
+                        const p2 = p1 + (sphereNum + 1)
+
+                        INDEXS.push(p1, p2, p1 + 1)
+                        INDEXS.push(p1 + 1, p2, p2 + 1)
+                    }
+                }
+            }
+        }
+
+        function initProgram(vertexString, fragmentString) {
+            const vsShader = createShader(gl.VERTEX_SHADER, vertexString)
+            const fsShader = createShader(gl.FRAGMENT_SHADER, fragmentString)
+
+            const program = createProgram(vsShader, fsShader)
+
+            const position = gl.getAttribLocation(program, 'a_position')
+            const matrix = gl.getUniformLocation(program, 'u_matrix')
+
+            const normal = gl.getAttribLocation(program, 'a_normal')
+            const diffuseLight = gl.getUniformLocation(program, 'u_diffuseLight')
+            const diffuseLightDirection = gl.getUniformLocation(program, 'u_diffuseLightDirection')
+            const ambientLight = gl.getUniformLocation(program, 'u_ambientLight')
+            const pointLight = gl.getUniformLocation(program, 'u_pointLight')
+            const pointLightPosition = gl.getUniformLocation(program, 'u_pointLightPosition')
+
+            const programInfo = {
+                program,
+                vertexParam: {
+                    position, matrix, normal, diffuseLight, diffuseLightDirection, ambientLight, pointLight, pointLightPosition
+                },
+                fragmentParam: {},
+            }
+
+            programs.push(programInfo)
+
+            function createShader(type, text) {
+                const shader = gl.createShader(type)
+                gl.shaderSource(shader, text)
+                gl.compileShader(shader)
+                const success = gl.getShaderParameter(shader, gl.COMPILE_STATUS)
+                if (success) return shader
+                alert(gl.getShaderInfoLog(shader))
+                gl.deleteShader(shader)
+            }
+
+            function createProgram(vsShader, fsShader) {
+                const program = gl.createProgram()
+                gl.attachShader(program, vsShader)
+                gl.attachShader(program, fsShader)
+                gl.linkProgram(program)
+                const success = gl.getProgramParameter(program, gl.LINK_STATUS)
+                if (success) return program
+                alert(gl.getProgramInfoLog(program))
+                gl.deleteProgram(program)
+            }
+        }
+
+        function initBuffer() {
+            const dataBuffer = gl.createBuffer()
+            gl.bindBuffer(gl.ARRAY_BUFFER, dataBuffer)
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(POINTS), gl.STATIC_DRAW)
+
+            const indexBuffer = gl.createBuffer()
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(INDEXS), gl.STATIC_DRAW)
+
+            const normalBuffer = gl.createBuffer()
+            gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer)
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(POINTS), gl.STATIC_DRAW)
+
+            bufferList.dataBuffer = dataBuffer
+            bufferList.indexBuffer = indexBuffer
+            bufferList.normalBuffer = normalBuffer
+        }
+
+        function initEvent() {
+            window.onmousedown = mouseDown
+            window.onmouseup = mouseUp
+            window.onmousemove = mouseMove
+            document.onmousewheel = mouseWheel
+
+            let moveState = false
+            let mouseDownX = null
+            let mouseDownY = null
+            function mouseDown(e) {
+                moveState = true
+                mouseDownX = e.clientX
+                mouseDownY = e.clientY
+            }
+            function mouseUp() {
+                moveState = false
+            }
+            function mouseMove(e) {
+                if (!moveState) return
+                offsetX = e.clientX - mouseDownX
+                offsetY = e.clientY - mouseDownY
+                render()
+            }
+            function mouseWheel(e) {
+                offsetWheel += e.wheelDelta / 100
+                render()
+            }
+        }
+
+        function render() {
+            resizeCanvas()
+
+            setAttribute()
+
+            setMatrix()
+
+            gl.drawElements(gl.TRIANGLES, INDEXS.length, gl.UNSIGNED_SHORT, 0)
+
+            function resizeCanvas() {
+                webglUtils.resizeCanvasToDisplaySize(gl.canvas)
+                gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
+                gl.clearColor(0, 0, 0, 1)
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+                gl.enable(gl.DEPTH_TEST)
+            }
+
+            function setAttribute() {
+                const { program,
+                    vertexParam: { position, normal, diffuseLight, diffuseLightDirection, ambientLight, pointLight, pointLightPosition },
+                } = programs[0]
+                const { dataBuffer, texCoordBuffer, normalBuffer } = bufferList
+
+                gl.useProgram(program)
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, dataBuffer)
+                gl.enableVertexAttribArray(position)
+                gl.vertexAttribPointer(position, 4, gl.FLOAT, false, 0, 0)
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer)
+                gl.enableVertexAttribArray(normal)
+                gl.vertexAttribPointer(normal, 4, gl.FLOAT, false, 0, 0)
+
+
+
+                gl.uniform4f(diffuseLight, 1, 1, 1, 1)
+                gl.uniform4f(diffuseLightDirection, 0, 10, 10, 1)
+
+                gl.uniform4f(ambientLight, 0.3, 0.3, 0.3, 1)
+
+                gl.uniform4f(pointLight, 1, 1, 1, 1)
+                gl.uniform4f(pointLightPosition, 10, 0, 0, 1)
+            }
+
+            function setMatrix() {
+                const { vertexParam: { matrix } } = programs[0]
+
+                // X旋转
+                let modelMatrixX = glMatrix.mat4.create()
+                glMatrix.mat4.identity(modelMatrixX)
+                glMatrix.mat4.rotate(modelMatrixX, modelMatrixX, Math.PI / 180 * offsetX, [0, 1, 0])
+
+                // Y旋转
+                let modelMatrixY = glMatrix.mat4.create()
+                glMatrix.mat4.identity(modelMatrixY)
+                glMatrix.mat4.rotate(modelMatrixY, modelMatrixY, Math.PI / 180 * offsetY, [1, 0, 0])
+
+                // Z缩放
+                let modelMatrixWheel = glMatrix.mat4.create()
+                glMatrix.mat4.identity(modelMatrixWheel)
+                glMatrix.mat4.translate(modelMatrixWheel, modelMatrixWheel, [0, 0, offsetWheel])
+
+                // 相乘
+                let modelMatrix = glMatrix.mat4.create()
+                glMatrix.mat4.identity(modelMatrix)
+                glMatrix.mat4.multiply(modelMatrix, modelMatrixY, modelMatrixX)
+                glMatrix.mat4.multiply(modelMatrix, modelMatrixWheel, modelMatrix)
+
+                // LookAt
+                let viewMatrix = glMatrix.mat4.create()
+                glMatrix.mat4.identity(viewMatrix)
+                glMatrix.mat4.lookAt(viewMatrix, [0, 0, 10], [0, 0, 0], [0, 1, 0])
+
+                // 投影矩阵
+                let projectionMatrix = glMatrix.mat4.create()
+                glMatrix.mat4.identity(projectionMatrix)
+                glMatrix.mat4.perspective(projectionMatrix, Math.PI / 180 * 30, gl.canvas.width / gl.canvas.height, 1, 1000)
+
+                let mvMatrix = glMatrix.mat4.create()
+                glMatrix.mat4.identity(mvMatrix)
+                glMatrix.mat4.multiply(mvMatrix, viewMatrix, modelMatrix)
+
+                let mvpMatrix = glMatrix.mat4.create()
+                glMatrix.mat4.identity(mvpMatrix)
+                glMatrix.mat4.multiply(mvpMatrix, projectionMatrix, mvMatrix)
+                gl.uniformMatrix4fv(matrix, false, mvpMatrix)
+            }
+        }
+    </script>
+</head>
+
+<body onload="init()">
+    <canvas id="webgl" width="600" height="600"></canvas>
+</body>
+
+</html>
